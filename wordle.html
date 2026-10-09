@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Wordle</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #121213;
+      --card-bg: #1a1a1b;
+      --border-empty: #3a3a3c;
+      --border-active: #565758;
+      
+      /* Tile state colors */
+      --color-correct: #538d4e;
+      --color-present: #b59f3b;
+      --color-absent: #3a3a3c;
+      
+      --text-main: #ffffff;
+      --text-muted: #818384;
+      --key-bg: #818384;
+      --key-bg-hover: #9ca3af;
+      
+      --modal-bg: #18181b;
+      --modal-border: #27272a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      height: 100vh;
+      height: 100dvh;
+      width: 100vw;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      overflow: hidden;
+      padding: 0 12px 12px 12px;
+    }
+
+    /* Header */
+    header {
+      width: 100%;
+      max-width: 500px;
+      height: 60px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-empty);
+      padding: 0 8px;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--text-main);
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      background: transparent;
+      border: 1px solid var(--border-empty);
+      color: var(--text-main);
+      font-size: 1.1rem;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .icon-btn:hover {
+      background-color: var(--card-bg);
+      border-color: var(--border-active);
+    }
+
+    /* Toast Container */
+    #toast-container {
+      position: fixed;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: #ffffff;
+      color: #000000;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      animation: fadeInOut 2.2s forwards ease-in-out;
+    }
+
+    @keyframes fadeInOut {
+      0% { opacity: 0; transform: translateY(-10px); }
+      15% { opacity: 1; transform: translateY(0); }
+      80% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-10px); }
+    }
+
+    /* Game Board Container */
+    #board-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-grow: 1;
+      width: 100%;
+      max-width: 500px;
+      padding: 10px 0;
+      min-height: 0; /* Important for flex child scaling */
+    }
+
+    #grid {
+      display: grid;
+      gap: 6px;
+      justify-content: center;
+      align-content: center;
+      max-height: 100%;
+    }
+
+    .tile {
+      aspect-ratio: 1;
+      width: clamp(36px, 11vw, 62px);
+      height: clamp(36px, 11vw, 62px);
+      border: 2px solid var(--border-empty);
+      border-radius: 4px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: clamp(1.2rem, 4.5vw, 2rem);
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-main);
+      background-color: transparent;
+      transition: border-color 0.15s ease, transform 0.1s ease;
+      position: relative;
+    }
+
+    .tile[data-state="active"] {
+      border-color: var(--border-active);
+      animation: pop 0.1s ease-in-out;
+    }
+
+    @keyframes pop {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+
+    /* Tile Flip Animation */
+    .tile.flip {
+      animation: flipTile 0.5s ease forwards;
+    }
+
+    @keyframes flipTile {
+      0% { transform: rotateX(0deg); }
+      50% { transform: rotateX(90deg); }
+      100% { transform: rotateX(0deg); }
+    }
+
+    .tile.shake {
+      animation: shakeRow 0.5s ease;
+    }
+
+    @keyframes shakeRow {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+
+    .tile[data-state="correct"] {
+      background-color: var(--color-correct);
+      border-color: var(--color-correct);
+    }
+
+    .tile[data-state="present"] {
+      background-color: var(--color-present);
+      border-color: var(--color-present);
+    }
+
+    .tile[data-state="absent"] {
+      background-color: var(--color-absent);
+      border-color: var(--color-absent);
+    }
+
+    /* Virtual Keyboard */
+    #keyboard {
+      width: 100%;
+      max-width: 500px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: auto;
+    }
+
+    .keyboard-row {
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+      width: 100%;
+    }
+
+    .key {
+      font-family: inherit;
+      font-weight: 700;
+      font-size: clamp(0.75rem, 2.8vw, 0.95rem);
+      border: none;
+      height: clamp(45px, 7vh, 58px);
+      flex: 1;
+      border-radius: 4px;
+      background-color: var(--key-bg);
+      color: var(--text-main);
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: background-color 0.2s ease, opacity 0.2s ease;
+      text-transform: uppercase;
+    }
+
+    .key:hover {
+      background-color: var(--key-bg-hover);
+    }
+
+    .key:active {
+      opacity: 0.8;
+    }
+
+    .key.wide {
+      flex: 1.5;
+      font-size: clamp(0.65rem, 2.2vw, 0.8rem);
+    }
+
+    .key[data-state="correct"] {
+      background-color: var(--color-correct);
+    }
+
+    .key[data-state="present"] {
+      background-color: var(--color-present);
+    }
+
+    .key[data-state="absent"] {
+      background-color: #27272a;
+      opacity: 0.4;
+    }
+
+    /* Modal Overlay */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      padding: 16px;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-content {
+      background-color: var(--modal-bg);
+      border: 1px solid var(--modal-border);
+      border-radius: 12px;
+      padding: 24px;
+      width: 100%;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--modal-border);
+      padding-bottom: 12px;
+    }
+
+    .modal-header h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .setting-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .setting-group label {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .setting-group label span.val {
+      color: var(--text-main);
+      font-weight: 700;
+    }
+
+    .option-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .opt-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-empty);
+      background-color: transparent;
+      color: var(--text-main);
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .opt-btn.active {
+      background-color: var(--text-main);
+      color: #000000;
+      border-color: var(--text-main);
+    }
+
+    .primary-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 6px;
+      border: none;
+      background-color: var(--color-correct);
+      color: #ffffff;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+      margin-top: 8px;
+    }
+
+    .primary-btn:hover {
+      opacity: 0.9;
+    }
+
+    .result-title {
+      font-size: 1.5rem;
+      text-align: center;
+      font-weight: 800;
+    }
+
+    .word-reveal {
+      text-align: center;
+      font-size: 1.1rem;
+      margin: 8px 0;
+      padding: 12px;
+      background-color: #27272a;
+      border-radius: 8px;
+    }
+
+    .word-reveal span {
+      font-weight: 800;
+      color: #facc15;
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <h1>WORDLE</h1>
+    <div class="header-actions">
+      <button class="icon-btn" id="restart-btn" title="Новая игра">🔄</button>
+      <button class="icon-btn" id="settings-btn" title="Настройки">⚙️</button>
+    </div>
+  </header>
+
+  <!-- Toast notifications -->
+  <div id="toast-container"></div>
+
+  <!-- Game Board Grid -->
+  <div id="board-container">
+    <div id="grid"></div>
+  </div>
+
+  <!-- Virtual Keyboard -->
+  <div id="keyboard"></div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Настройки</h2>
+        <button class="icon-btn" id="close-settings" style="width:32px; height:32px;">✕</button>
+      </div>
+
+      <div class="setting-group">
+        <label>Язык / Language</label>
+        <div class="option-buttons" id="lang-opts">
+          <button class="opt-btn" data-val="ru">Русский 🇷🇺</button>
+          <button class="opt-btn" data-val="en">English 🇬🇧</button>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label>Длина слова: <span class="val" id="len-val">5</span> букв</label>
+        <div class="option-buttons" id="len-opts">
+          <button class="opt-btn" data-val="4">4</button>
+          <button class="opt-btn" data-val="5">5</button>
+          <button class="opt-btn" data-val="6">6</button>
+          <button class="opt-btn" data-val="7">7</button>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label>Количество попыток: <span class="val" id="attempts-val">6</span></label>
+        <div class="option-buttons" id="attempts-opts">
+          <button class="opt-btn" data-val="4">4</button>
+          <button class="opt-btn" data-val="5">5</button>
+          <button class="opt-btn" data-val="6">6</button>
+          <button class="opt-btn" data-val="7">7</button>
+          <button class="opt-btn" data-val="8">8</button>
+        </div>
+      </div>
+
+      <button class="primary-btn" id="apply-settings">Применить и Начать</button>
+    </div>
+  </div>
+
+  <!-- Game Over / Victory Modal -->
+  <div class="modal-overlay" id="result-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Результат</h2>
+        <button class="icon-btn" id="close-result" style="width:32px; height:32px;">✕</button>
+      </div>
+      <div class="result-title" id="result-title">Победа!</div>
+      <div class="word-reveal" id="word-reveal">Загаданное слово: <span id="target-word-text">-----</span></div>
+      <button class="primary-btn" id="play-again-btn">Играть Снова</button>
+    </div>
+  </div>
+
+  <script>
+    // Embedded Word Dictionaries by Language and Word Length
+    const DICTIONARIES = {
+      ru: {
+        4: ["РОЗА", "РЕКА", "ЛЕТО", "НЕБО", "ЗИМА", "МОРЕ", "ХЛЕБ", "СНЕГ", "ДЕНЬ", "ГОРА", "ЛИСА", "ВОЛК", "СЛОВО", "ПАРК", "КИНО", "ЗОНТ", "МОСТ", "КЛЮЧ", "ЛУНА"],
+        5: ["ПРИВЕТ", "ОЗЕРО", "КНИГА", "ПТИЦА", "ЗЕМЛЯ", "ОСЕНЬ", "ГОРОД", "ВЕЧЕР", "ТЕПЛО", "КРАСКА", "ФАКТЫ", "ОГОНЬ", "ДОЖДЬ", "МЕЧТА", "ВЕСНА", "СЕМЬЯ", "АЛМАЗ", "ОКЕАН", "ПЕСНЯ", "ВОЗДУХ"],
+        6: ["СОЛНЦЕ", "ПОГОДА", "ЗВЕЗДА", "ЛЮБОВЬ", "СЕРДЦЕ", "РАДУГА", "ЛЕСНИК", "ДЕРЕВО", "КОСМОС", "МУЗЫКА", "ОБЛАКО", "СТРАНА", "РАДОСТЬ", "ОСТРОВ"],
+        7: ["ПЛАНЕТА", "КРАСОТА", "ПРИРОДА", "СЧАСТЬЕ", "ЭНЕРГИЯ", "ЧЕЛОВЕК", "КАРТИНА", "САМОЛЕТ", "КАПИТАН", "СУББОТА"]
+      },
+      en: {
+        4: ["ROSE", "WAVE", "WIND", "FIRE", "STAR", "MOON", "SNOW", "RAIN", "TIME", "LOVE", "BLUE", "GAME", "PARK", "CITY", "BOOK"],
+        5: ["SMART", "CLOUD", "HEART", "SMILE", "MUSIC", "LIGHT", "DREAM", "BEACH", "EARTH", "NIGHT", "POWER", "WORLD", "WATER", "GREEN"],
+        6: ["SUMMER", "WINTER", "FLOWER", "PLANET", "BEAUTY", "STREAM", "SUNSET", "FOREST", "SYSTEM", "BREEZE", "CASTLE", "GARDEN"],
+        7: ["FREEDOM", "JOURNEY", "HARMONY", "DIAMOND", "VICTORY", "SHADOWS", "SUNSHINE", "PICTURE", "STATION", "PERFECT"]
+      }
+    };
+
+    // Keyboard Layouts
+    const KEYBOARDS = {
+      ru: [
+        ["Й", "Ц", "У", "К", "Е", "Н", "Г", "Ш", "Щ", "З", "Х", "Ъ"],
+        ["Ф", "Ы", "В", "А", "П", "Р", "О", "Л", "Д", "Ж", "Э"],
+        ["ENTER", "Я", "Ч", "С", "М", "И", "Т", "Ь", "Б", "Ю", "⌫"]
+      ],
+      en: [
+        ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+        ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+        ["ENTER", "Z", "X", "C", "V", "B", "N", "M", "⌫"]
+      ]
+    };
+
+    // Game Configuration State
+    let config = {
+      lang: 'ru',
+      wordLength: 5,
+      maxAttempts: 6
+    };
+
+    let targetWord = "";
+    let currentAttempt = 0;
+    let currentTile = 0;
+    let guesses = [];
+    let isGameOver = false;
+    let letterStates = {};
+
+    // DOM Elements
+    const gridEl = document.getElementById('grid');
+    const keyboardEl = document.getElementById('keyboard');
+    const settingsModal = document.getElementById('settings-modal');
+    const resultModal = document.getElementById('result-modal');
+    const toastContainer = document.getElementById('toast-container');
+
+    // Initialize Game
+    function initGame() {
+      const words = DICTIONARIES[config.lang][config.wordLength];
+      targetWord = words[Math.floor(Math.random() * words.length)];
+      
+      currentAttempt = 0;
+      currentTile = 0;
+      guesses = Array(config.maxAttempts).fill("").map(() => []);
+      isGameOver = false;
+      letterStates = {};
+
+      renderBoard();
+      renderKeyboard();
+      closeModals();
+    }
+
+    // Render Grid Board
+    function renderBoard() {
+      gridEl.innerHTML = "";
+      gridEl.style.gridTemplateColumns = `repeat(${config.wordLength}, 1fr)`;
+
+      for (let r = 0; r < config.maxAttempts; r++) {
+        for (let c = 0; c < config.wordLength; c++) {
+          const tile = document.createElement('div');
+          tile.classList.add('tile');
+          tile.dataset.row = r;
+          tile.dataset.col = c;
+          gridEl.appendChild(tile);
+        }
+      }
+    }
+
+    // Render Keyboard
+    function renderKeyboard() {
+      keyboardEl.innerHTML = "";
+      const layout = KEYBOARDS[config.lang];
+
+      layout.forEach(row => {
+        const rowEl = document.createElement('div');
+        rowEl.classList.add('keyboard-row');
+
+        row.forEach(key => {
+          const btn = document.createElement('button');
+          btn.classList.add('key');
+          if (key === 'ENTER' || key === '⌫') btn.classList.add('wide');
+          btn.textContent = key;
+          btn.dataset.key = key;
+
+          if (letterStates[key]) {
+            btn.dataset.state = letterStates[key];
+          }
+
+          btn.addEventListener('click', () => handleInput(key));
+          rowEl.appendChild(btn);
+        });
+
+        keyboardEl.appendChild(rowEl);
+      });
+    }
+
+    // Input Handling
+    function handleInput(key) {
+      if (isGameOver) return;
+
+      const upperKey = key.toUpperCase();
+
+      if (upperKey === 'ENTER') {
+        submitGuess();
+      } else if (upperKey === '⌫' || upperKey === 'BACKSPACE') {
+        removeLetter();
+      } else if (isValidLetter(upperKey)) {
+        addLetter(upperKey);
+      }
+    }
+
+    function isValidLetter(char) {
+      if (config.lang === 'ru') {
+        return /^[А-ЯЁ]$/i.test(char);
+      } else {
+        return /^[A-Z]$/i.test(char);
+      }
+    }
+
+    function addLetter(letter) {
+      if (currentTile < config.wordLength) {
+        guesses[currentAttempt][currentTile] = letter;
+        const tile = getTileEl(currentAttempt, currentTile);
+        tile.textContent = letter;
+        tile.dataset.state = 'active';
+        currentTile++;
+      }
+    }
+
+    function removeLetter() {
+      if (currentTile > 0) {
+        currentTile--;
+        guesses[currentAttempt][currentTile] = "";
+        const tile = getTileEl(currentAttempt, currentTile);
+        tile.textContent = "";
+        tile.dataset.state = "";
+      }
+    }
+
+    function submitGuess() {
+      if (currentTile < config.wordLength) {
+        showToast(config.lang === 'ru' ? "Недостаточно букв!" : "Not enough letters!");
+        shakeRow(currentAttempt);
+        return;
+      }
+
+      const guessWord = guesses[currentAttempt].join("");
+      revealRow(currentAttempt, guessWord);
+    }
+
+    function revealRow(row, guess) {
+      const targetArr = targetWord.split("");
+      const guessArr = guess.split("");
+      const rowStates = Array(config.wordLength).fill('absent');
+
+      // First pass: exact position matches
+      guessArr.forEach((char, i) => {
+        if (char === targetArr[i]) {
+          rowStates[i] = 'correct';
+          targetArr[i] = null;
+        }
+      });
+
+      // Second pass: letter present elsewhere
+      guessArr.forEach((char, i) => {
+        if (rowStates[i] !== 'correct' && targetArr.includes(char)) {
+          rowStates[i] = 'present';
+          targetArr[targetArr.indexOf(char)] = null;
+        }
+      });
+
+      // Flip tiles with delay
+      guessArr.forEach((char, col) => {
+        const tile = getTileEl(row, col);
+        setTimeout(() => {
+          tile.classList.add('flip');
+          tile.dataset.state = rowStates[col];
+
+          const currentState = letterStates[char];
+          if (rowStates[col] === 'correct') {
+            letterStates[char] = 'correct';
+          } else if (rowStates[col] === 'present' && currentState !== 'correct') {
+            letterStates[char] = 'present';
+          } else if (!currentState) {
+            letterStates[char] = 'absent';
+          }
+
+          if (col === config.wordLength - 1) {
+            updateKeyboard();
+            checkGameStatus(guess);
+          }
+        }, col * 200);
+      });
+    }
+
+    function checkGameStatus(guess) {
+      if (guess === targetWord) {
+        isGameOver = true;
+        setTimeout(() => {
+          showResultModal(true);
+        }, 500);
+      } else if (currentAttempt === config.maxAttempts - 1) {
+        isGameOver = true;
+        setTimeout(() => {
+          showResultModal(false);
+        }, 500);
+      } else {
+        currentAttempt++;
+        currentTile = 0;
+      }
+    }
+
+    function updateKeyboard() {
+      const keys = keyboardEl.querySelectorAll('.key');
+      keys.forEach(btn => {
+        const key = btn.dataset.key;
+        if (letterStates[key]) {
+          btn.dataset.state = letterStates[key];
+        }
+      });
+    }
+
+    function getTileEl(row, col) {
+      return gridEl.querySelector(`.tile[data-row="${row}"][data-col="${col}"]`);
+    }
+
+    function shakeRow(row) {
+      for (let c = 0; c < config.wordLength; c++) {
+        const tile = getTileEl(row, c);
+        tile.classList.add('shake');
+        setTimeout(() => tile.classList.remove('shake'), 500);
+      }
+    }
+
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.classList.add('toast');
+      toast.textContent = msg;
+      toastContainer.appendChild(toast);
+      setTimeout(() => toast.remove(), 2200);
+    }
+
+    function showResultModal(win) {
+      const titleEl = document.getElementById('result-title');
+      const targetTextEl = document.getElementById('target-word-text');
+      
+      titleEl.textContent = win ? (config.lang === 'ru' ? "Победа! 🎉" : "Victory! 🎉") : (config.lang === 'ru' ? "Игра окончена 😔" : "Game Over 😔");
+      titleEl.style.color = win ? "var(--color-correct)" : "#ef4444";
+      targetTextEl.textContent = targetWord;
+
+      resultModal.classList.add('active');
+    }
+
+    function closeModals() {
+      settingsModal.classList.remove('active');
+      resultModal.classList.remove('active');
+    }
+
+    // Global Keydown Handler
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeModals();
+        return;
+      }
+      handleInput(e.key);
+    });
+
+    // Modal Control Listeners
+    document.getElementById('settings-btn').addEventListener('click', () => {
+      syncSettingsUI();
+      settingsModal.classList.add('active');
+    });
+
+    document.getElementById('close-settings').addEventListener('click', () => {
+      settingsModal.classList.remove('active');
+    });
+
+    document.getElementById('restart-btn').addEventListener('click', initGame);
+    document.getElementById('play-again-btn').addEventListener('click', initGame);
+    document.getElementById('close-result').addEventListener('click', closeModals);
+
+    // Option Button Selector Utility
+    function setupOptionGroup(containerId, valueKey, labelValId) {
+      const container = document.getElementById(containerId);
+      container.addEventListener('click', (e) => {
+        if (e.target.classList.contains('opt-btn')) {
+          container.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('active'));
+          e.target.classList.add('active');
+          const val = e.target.dataset.val;
+          config[valueKey] = isNaN(val) ? val : parseInt(val);
+          if (labelValId) {
+            document.getElementById(labelValId).textContent = val;
+          }
+        }
+      });
+    }
+
+    setupOptionGroup('lang-opts', 'lang');
+    setupOptionGroup('len-opts', 'wordLength', 'len-val');
+    setupOptionGroup('attempts-opts', 'maxAttempts', 'attempts-val');
+
+    function syncSettingsUI() {
+      document.querySelectorAll('#lang-opts .opt-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.val === config.lang);
+      });
+      document.querySelectorAll('#len-opts .opt-btn').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.val) === config.wordLength);
+      });
+      document.getElementById('len-val').textContent = config.wordLength;
+      
+      document.querySelectorAll('#attempts-opts .opt-btn').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.val) === config.maxAttempts);
+      });
+      document.getElementById('attempts-val').textContent = config.maxAttempts;
+    }
+
+    document.getElementById('apply-settings').addEventListener('click', () => {
+      initGame();
+    });
+
+    // Start Game
+    syncSettingsUI();
+    initGame();
+  </script>
+</body>
+</html>
